@@ -1,1 +1,3 @@
-# Thread Wire Calculator app tailored for a Progressive Web App (PWA).
+# Thread Wire Calculator
+
+## Thread Wire Calculator is a mobile app for calculating target thread depth on lathe cut threads.
