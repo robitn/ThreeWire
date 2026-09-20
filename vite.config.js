@@ -25,7 +25,7 @@ export default defineConfig({
         name: 'TwoWire — Thread Wire Calculator',
         short_name: 'TwoWire',
         description:
-          'Measure thread pitch diameter or measurement over wires with the three-wire method.',
+          'Three-wire thread calculator: pitch diameter, measurement over wires, and ASME B1.1 or ISO 965 class limits.',
         // Matches the app shell (bg-slate-100) rather than the icon, so the splash screen
         // and browser chrome hand over to the first paint without a flash.
         theme_color: '#f1f5f9',
