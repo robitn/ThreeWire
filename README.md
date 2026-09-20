@@ -193,6 +193,31 @@ in `public/favicon.svg`), then regenerate:
 npm run generate:icons
 ```
 
+## Project Structure
+
+```text
+src/
+  App.vue              the one screen: state wiring and layout
+  components/          FieldRow, SegmentedControl, StatusBadge, ReloadPrompt
+  lib/                 the domain, with no Vue in it
+    units.js           millimetre and inch conversion, display rounding
+    threadGeometry.js  pitch diameter, best wire size, the three-wire relation
+    threadLimits.js    ASME B1.1 and ISO 965 classes of fit
+    threadCatalog.js   queries over the generated catalog
+    settingsStorage.js reading and writing the stored setup
+  data/                reference tables, not logic
+    threadDatabase.js  generated from threadlib; do not edit by hand
+    unifiedClassLimits.js  ASME B1.1 tables, transcribed
+    isoClassLimits.js      ISO 965-1 tables, transcribed
+  __tests__/           one spec per module, plus App.spec.js end to end
+```
+
+Everything under `lib/` is plain functions over millimetres and degrees, so the arithmetic
+can be checked against published tables directly rather than through the interface. That is
+where the standards live and where most of the tests point. `App.vue` holds the reactive
+state that ties them to the controls, and keeps the calculation in millimetres throughout,
+converting only at the display edge.
+
 ## Development
 
 Install dependencies:
