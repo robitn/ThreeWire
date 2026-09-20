@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import ReloadPrompt from './components/ReloadPrompt.vue'
 import { threadDatabase, threadStandards } from './data/threadDatabase'
 import {
   defaultClassId,
@@ -703,6 +704,8 @@ watch(
       </section>
     </div>
   </main>
+
+  <ReloadPrompt />
 </template>
 
 <style scoped></style>

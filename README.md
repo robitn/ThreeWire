@@ -165,8 +165,18 @@ offline once loaded -- useful at a bench with no signal.
 - **Android:** open the site in Chrome, then the install prompt or Menu -> Install app.
 - **Desktop:** use the install icon in the browser address bar.
 
-The service worker precaches the whole app and updates itself in the background whenever a
-new version is deployed.
+The service worker precaches the whole app, so an install keeps working with no signal.
+
+Updates are offered rather than applied. When a new version has been deployed and its worker
+is installed and waiting, `src/components/ReloadPrompt.vue` raises a toast at the bottom of
+the screen with **Update** and **Close**. Update tells the waiting worker to take over and
+reloads onto the new assets; Close leaves the running version alone until next launch. The
+alternative, `registerType: 'autoUpdate'`, reloads the page on its own, which is no way to
+treat someone halfway through entering a measurement.
+
+A worker registered on an earlier visit raises no registration event and is re-checked on a
+schedule of the browser's choosing, so the component also calls `registration.update()` on
+mount to check for a new version at launch.
 
 ## Deployment
 

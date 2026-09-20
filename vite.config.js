@@ -17,7 +17,10 @@ export default defineConfig({
     vueDevTools(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // Prompt rather than autoUpdate: swapping the worker out from under someone reloads
+      // the page, and losing a half-entered measurement mid-job is worse than running a
+      // version behind for another minute. ReloadPrompt.vue offers the swap instead.
+      registerType: 'prompt',
       // Public assets that no manifest entry points at; the plugin already precaches the
       // webmanifest and every icon listed below.
       includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],
