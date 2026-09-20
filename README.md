@@ -177,9 +177,13 @@ reloads onto the new assets; Close leaves the running version alone until next l
 alternative, `registerType: 'autoUpdate'`, reloads the page on its own, which is no way to
 treat someone halfway through entering a measurement.
 
-A worker registered on an earlier visit raises no registration event and is re-checked on a
-schedule of the browser's choosing, so the component also calls `registration.update()` on
-mount to check for a new version at launch.
+A worker registered on an earlier visit raises no registration event, and the browser
+re-checks it on a schedule of its own that can run to hours, so the component asks for
+itself. It calls `registration.update()` on mount, whenever the page becomes visible again,
+whenever the network comes back, and hourly while the app is left open. Checking only on
+mount is not enough: an installed app on a phone is backgrounded rather than closed, so the
+page survives and never remounts, and the toast would only appear after a kill and
+relaunch. Checks are rate limited to one a minute and skipped while offline.
 
 The Workbox config sets `clientsClaim: true`. `autoUpdate` implies it; `prompt` does not,
 and without it a first-time worker installs but controls nothing until the next navigation,

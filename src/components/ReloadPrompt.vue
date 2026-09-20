@@ -1,26 +1,73 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
+
+// How often to ask while the app just sits there, and the shortest gap between two asks.
+// The gap keeps a flurry of tab switches from turning into a flurry of requests.
+const POLL_INTERVAL_MS = 60 * 60 * 1000
+const MIN_GAP_MS = 60 * 1000
+
+let registration = null
+let timer = null
+let lastCheckedAt = 0
 
 // needRefresh turns true once a new service worker has installed and is sitting in the
 // waiting state. updateServiceWorker(true) tells that worker to skip waiting and take over,
 // then reloads the page, which is what actually swaps the running assets for the new ones.
-const { needRefresh, updateServiceWorker } = useRegisterSW()
+const { needRefresh, updateServiceWorker } = useRegisterSW({
+  onRegisteredSW(_scriptUrl, swRegistration) {
+    registration = swRegistration ?? null
+  },
+})
 
-// A worker registered on an earlier visit already controls this page, so registering again
-// raises no event for it and the browser re-checks it on a schedule of its own that can run
-// to hours. Launching the app is exactly when someone would want to hear about a new
-// version, so ask right away.
+// The browser re-checks a worker on a schedule of its own that can run to hours, so left
+// alone the toast would only ever turn up by luck. Asking has to be cheap and frequent
+// enough that a new version is noticed without the app being killed and relaunched.
+async function checkForUpdate() {
+  if (!registration) return
+  // An update check while offline just fails; there is no point spending the request.
+  if (navigator.onLine === false) return
+
+  const now = Date.now()
+  if (now - lastCheckedAt < MIN_GAP_MS) return
+  lastCheckedAt = now
+
+  try {
+    await registration.update()
+  } catch {
+    // Best effort only: the network went away, or the registration has gone. The prompt
+    // stays hidden and the calculator carries on from the copy already cached.
+  }
+}
+
+// Coming back to the app is the moment worth checking: on a phone it is what happens
+// instead of a relaunch, since the page survives in the background and never remounts.
+function checkWhenVisible() {
+  if (document.visibilityState === 'visible') checkForUpdate()
+}
+
 onMounted(async () => {
   if (!('serviceWorker' in navigator)) return
 
   try {
-    const registration = await navigator.serviceWorker.getRegistration()
-    await registration?.update()
+    // A worker registered on an earlier visit is already in charge and raises no
+    // registration event, so onRegisteredSW above will not fire for it.
+    registration = (await navigator.serviceWorker.getRegistration()) ?? registration
   } catch {
-    // Best effort only: offline, or the registration has gone. The prompt stays hidden and
-    // the calculator carries on working from the copy already cached.
+    return
   }
+
+  await checkForUpdate()
+
+  document.addEventListener('visibilitychange', checkWhenVisible)
+  window.addEventListener('online', checkForUpdate)
+  timer = setInterval(checkForUpdate, POLL_INTERVAL_MS)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', checkWhenVisible)
+  window.removeEventListener('online', checkForUpdate)
+  if (timer) clearInterval(timer)
 })
 
 function update() {
