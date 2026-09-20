@@ -178,6 +178,12 @@ A worker registered on an earlier visit raises no registration event and is re-c
 schedule of the browser's choosing, so the component also calls `registration.update()` on
 mount to check for a new version at launch.
 
+The Workbox config sets `clientsClaim: true`. `autoUpdate` implies it; `prompt` does not,
+and without it a first-time worker installs but controls nothing until the next navigation,
+which is enough for Chrome to withhold the install option on a first visit. It is safe
+alongside `prompt` because `skipWaiting` stays off: an updated worker still waits to be
+asked.
+
 The foot of the result panel carries the build it is running: the version from
 `package.json` and the commit it was built from, both baked in by `vite.config.js`. The
 version alone would not settle whether an installed copy has picked up a deploy, since a

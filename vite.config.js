@@ -79,6 +79,13 @@ export default defineConfig({
         // The whole app is static and small; precaching it makes the tool work offline,
         // which is the point of installing it in a workshop.
         globPatterns: ['**/*.{js,css,html}'],
+        // Take control of the page that registered us, on the very first visit. Without
+        // this a first-time worker installs but controls nothing until the next navigation,
+        // and Chrome will not offer to install an app it does not yet see a worker serving.
+        // autoUpdate set this implicitly; 'prompt' does not, which is what broke installing.
+        // Safe to pair with 'prompt': skipWaiting stays off, so an updated worker still
+        // waits for the user rather than swapping itself in.
+        clientsClaim: true,
       },
     }),
   ],
