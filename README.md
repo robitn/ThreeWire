@@ -162,7 +162,10 @@ The hosted build is a Progressive Web App, so it installs to the home screen and
 offline once loaded -- useful at a bench with no signal.
 
 - **iOS/iPadOS:** open the site in Safari, then Share -> Add to Home Screen.
-- **Android:** open the site in Chrome, then the install prompt or Menu -> Install app.
+- **Android:** open the site in Chrome, then Menu -> Install and create shortcut. Chrome
+  moves and renames this entry between versions, so it may not read that way on yours. An
+  installed PWA goes to the app drawer, which is how Android tells a real installed app
+  from a bare home screen shortcut.
 - **Desktop:** use the install icon in the browser address bar.
 
 The service worker precaches the whole app, so an install keeps working with no signal.
