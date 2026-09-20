@@ -178,6 +178,12 @@ A worker registered on an earlier visit raises no registration event and is re-c
 schedule of the browser's choosing, so the component also calls `registration.update()` on
 mount to check for a new version at launch.
 
+The foot of the result panel carries the build it is running: the version from
+`package.json` and the commit it was built from, both baked in by `vite.config.js`. The
+version alone would not settle whether an installed copy has picked up a deploy, since a
+fix need not bump it; the commit always changes. It is also the thing to quote in a bug
+report.
+
 ## Deployment
 
 Pushing to `main` runs `.github/workflows/deploy.yml`, which tests, builds, and publishes

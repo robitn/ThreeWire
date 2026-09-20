@@ -296,6 +296,9 @@ const catalogTargetDisplay = computed(() =>
   catalogTargetMm.value === null ? null : toDisplay(catalogTargetMm.value),
 )
 
+// Injected at build time by vite.config.js. Static, so it is read once rather than tracked.
+const buildLabel = `v${__APP_VERSION__} · ${__BUILD_REF__}`
+
 const classShortLabel = computed(() =>
   threadClassShort(threadClassSystem.value, activeClassId.value),
 )
@@ -584,17 +587,20 @@ watch(
             <p class="mt-1 text-lg font-bold tabular-nums" data-testid="best-wire-size">{{ bestWireSizeDisplay.toFixed(displayDecimals) }} {{ unitLabel }}</p>
           </div>
         </div>
-        <p class="mt-6 border-t border-white/10 pt-4 text-xs leading-5 text-slate-400">
-          Best wire size uses W = P / (2 × cos(half thread angle)).
-          <span v-if="classLimitsMm?.source === 'formula'" data-testid="class-source">
-            ASME B1.1 does not table this size here, so its class limits come from the tolerance
-            formula instead. Check them against the printed table before cutting to them.
-          </span>
-          <span v-else-if="activeClassId !== 'basic' && !classLimitsMm" data-testid="class-unavailable">
-            This diameter and pitch is not a combination {{ classSystemLabel }} tabulates, so there
-            are no {{ classShortLabel }} limits to show and the basic pitch diameter stands in.
-          </span>
-        </p>
+        <div class="mt-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-t border-white/10 pt-4">
+          <p class="max-w-prose text-xs leading-5 text-slate-400">
+            Best wire size uses W = P / (2 × cos(half thread angle)).
+            <span v-if="classLimitsMm?.source === 'formula'" data-testid="class-source">
+              ASME B1.1 does not table this size here, so its class limits come from the tolerance
+              formula instead. Check them against the printed table before cutting to them.
+            </span>
+            <span v-else-if="activeClassId !== 'basic' && !classLimitsMm" data-testid="class-unavailable">
+              This diameter and pitch is not a combination {{ classSystemLabel }} tabulates, so there
+              are no {{ classShortLabel }} limits to show and the basic pitch diameter stands in.
+            </span>
+          </p>
+          <p class="ml-auto text-xs tabular-nums text-slate-500" data-testid="build-version">{{ buildLabel }}</p>
+        </div>
       </section>
     </div>
   </main>

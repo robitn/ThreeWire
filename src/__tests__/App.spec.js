@@ -488,6 +488,16 @@ describe('App', () => {
     expect(second.get('[data-testid="thread-class"]').element.value).toBe('3A')
   })
 
+  // The point of showing this is telling whether an installed copy has picked up a deploy,
+  // which the version alone cannot do: a fix need not bump it. The commit always changes.
+  it('shows the version and the commit it was built from', () => {
+    const wrapper = mountApp()
+    const stamp = wrapper.get('[data-testid="build-version"]').text()
+
+    expect(stamp).toMatch(/^v\d+\.\d+\.\d+ \u00b7 \S+$/)
+    expect(stamp).toContain(`v${__APP_VERSION__}`)
+  })
+
   it('restores mode, units, thread selection and wire size after a reload', async () => {
     const first = mountApp()
 

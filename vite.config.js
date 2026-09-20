@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
 import { defineConfig } from 'vite'
@@ -10,8 +12,32 @@ import { VitePWA } from 'vite-plugin-pwa'
 // the repository name. The dev server stays at the root.
 const base = process.env.NODE_ENV === 'production' ? '/TwoWire/' : '/'
 
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+
+// The version alone cannot answer "has my installed copy updated yet", because a deploy
+// that fixes something need not bump it. The commit can, and it is what a bug report wants
+// quoting anyway.
+function buildRef() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7)
+
+  try {
+    return execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim()
+  } catch {
+    // No git, or not a checkout: a tarball build still has to produce something.
+    return 'unknown'
+  }
+}
+
 export default defineConfig({
   base,
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+    __BUILD_REF__: JSON.stringify(buildRef()),
+  },
   plugins: [
     vue(),
     vueDevTools(),
