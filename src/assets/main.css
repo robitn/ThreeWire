@@ -3,5 +3,5 @@
 /* Installed as a PWA the page fills the whole screen, so the overscroll area behind the
    app shell needs the same colour as <main>. */
 html {
-    background-color: var(--color-slate-100);
+  background-color: var(--color-slate-100);
 }
