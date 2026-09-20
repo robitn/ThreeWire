@@ -39,6 +39,57 @@ describe('threadDatabase', () => {
     expect(screw.pitch).not.toBe(bolt.pitch)
   })
 
+  // A '#' size counts screw sizes rather than measuring one, so it cannot be read as a
+  // length: #1 is 0.073 in across, not 1 mm.
+  it('resolves machine screw numbers to a diameter', () => {
+    const screw = threadDatabase.find((thread) => thread.id === 'unc-unc-no-1-external')
+
+    expect(screw.nominalDiameterMm).toBeCloseTo(1.8542, 4)
+  })
+
+  // '8-UN-1' is a 1 inch thread in the 8 threads-per-inch series, not an 8 inch thread.
+  it('does not read the series prefix of a UN standard as a size', () => {
+    const thread = threadDatabase.find((thread) => thread.id === '8-un-8-un-1-external')
+
+    expect(thread.designation).toBe('1')
+    expect(thread.nominalDiameterMm).toBeCloseTo(25.4, 4)
+  })
+
+  // A G designation names a pipe bore, so the diameter comes from ISO 228-1 rather than
+  // from the designator.
+  it('carries the catalogued diameter of a BSP thread', () => {
+    const thread = threadDatabase.find((thread) => thread.id === 'bsp-g1-2-external')
+
+    expect(thread.nominalDiameterMm).toBe(20.955)
+  })
+
+  it('gives every calculable standard a pitch diameter factor', () => {
+    const calculable = threadStandards.filter((standard) => standard.angle !== null)
+
+    expect(calculable.length).toBeGreaterThan(0)
+    expect(calculable.every((standard) => standard.pitchDiameterFactor > 0)).toBe(true)
+  })
+
+  // Nothing downstream can work out a pitch diameter without one.
+  it('gives every thread of a calculable standard a nominal diameter', () => {
+    const calculable = new Set(
+      threadStandards.filter((standard) => standard.angle !== null).map((standard) => standard.id),
+    )
+    const threads = threadDatabase.filter((thread) => calculable.has(thread.standardId))
+
+    expect(threads.filter((thread) => !(thread.nominalDiameterMm > 0))).toEqual([])
+  })
+
+  // Classes of fit belong to a standard: the inch series follows ASME B1.1 and metric ISO
+  // follows ISO 965. BSP runs its own system, which the calculator does not implement.
+  it('points each standard at its own class system', () => {
+    const asme = threadStandards.filter((s) => s.threadClassSystem === 'asme-b1.1')
+
+    expect(asme.map((s) => s.id).sort()).toEqual(['4-un', '6-un', '8-un', 'unc', 'unef', 'unf'])
+    expect(threadStandards.find((s) => s.id === 'metric').threadClassSystem).toBe('iso-965')
+    expect(threadStandards.find((s) => s.id === 'bsp').threadClassSystem).toBeNull()
+  })
+
   it('only references standards that exist', () => {
     const standardIds = new Set(threadStandards.map((standard) => standard.id))
 

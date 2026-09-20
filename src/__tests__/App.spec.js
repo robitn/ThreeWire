@@ -24,6 +24,10 @@ function setStorage(value) {
   Object.defineProperty(window, 'localStorage', { value, configurable: true, writable: true })
 }
 
+async function useBasicClass(wrapper) {
+  await wrapper.get('[data-testid="thread-class"]').setValue('basic')
+}
+
 async function useMetric(wrapper) {
   await wrapper.get('[data-testid="units-metric"]').trigger('click')
 }
@@ -33,6 +37,10 @@ async function selectThread(wrapper, standardId, size, threadId) {
   await wrapper.get('[data-testid="thread-standard"]').setValue(standardId)
   await wrapper.get('[data-testid="fastener-size"]').setValue(size)
   if (threadId) await wrapper.get('[data-testid="pitch"]').setValue(threadId)
+}
+
+function classOptions(wrapper) {
+  return wrapper.findAll('[data-testid="thread-class"] option').map((option) => option.text())
 }
 
 function pitchOptions(wrapper) {
@@ -220,6 +228,266 @@ describe('App', () => {
     expect(wrapper.get('[data-testid="wire-size"]').element.value).toBe('0.5774')
   })
 
+  // Picking a thread is picking a size to work to, so the field starts at what that thread
+  // should measure rather than at an arbitrary number. An inch thread has a class of fit,
+  // and its maximum is the size to cut to.
+  it('starts the measurement at the class maximum of the selected thread', () => {
+    const wrapper = mountApp()
+
+    // 1/4-20 UNC Class 2A maximum pitch diameter.
+    expect(wrapper.get('[data-testid="target-measurement-mode"]').text()).toBe('2A max')
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('0.2164')
+  })
+
+  it('starts at the basic pitch diameter when no class is chosen', async () => {
+    const wrapper = mountApp()
+
+    await useBasicClass(wrapper)
+
+    // 1/4-20 UNC: 0.25 in major, less 0.649519 * 0.05 in.
+    expect(wrapper.get('[data-testid="target-measurement-mode"]').text()).toBe('Nominal')
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('0.21752')
+    expect(wrapper.get('[data-testid="result"]').text()).toContain('0.26083')
+    expect(wrapper.find('[data-testid="result-range"]').exists()).toBe(false)
+  })
+
+  it('moves the nominal measurement to a newly selected thread', async () => {
+    const wrapper = mountApp()
+
+    await selectThread(wrapper, 'metric', 'M6')
+    await useBasicClass(wrapper)
+    await useMetric(wrapper)
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('5.3505')
+
+    await wrapper.get('[data-testid="pitch"]').setValue('metric-m6x0-5-external')
+
+    // Same nominal diameter, finer pitch: the pitch diameter moves with it.
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('5.6752')
+  })
+
+  it('pins the measurement once one is entered and can return to nominal', async () => {
+    const wrapper = mountApp()
+
+    await useBasicClass(wrapper)
+    await useMetric(wrapper)
+    await wrapper.get('[data-testid="target-measurement"]').setValue('5.5')
+
+    expect(wrapper.get('[data-testid="target-measurement-mode"]').text()).toBe('Measured')
+    expect(wrapper.get('[data-testid="nominal-target"]').text()).toBe('Nominal 5.5251 mm')
+
+    await wrapper.get('[data-testid="use-target-measurement"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="target-measurement-mode"]').text()).toBe('Nominal')
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('5.5251')
+    expect(wrapper.find('[data-testid="nominal-target"]').exists()).toBe(false)
+  })
+
+  // Unlike the wire size, a reading only means anything on the thread it was taken from.
+  it('drops a measurement that belongs to the previous thread', async () => {
+    const wrapper = mountApp()
+
+    await wrapper.get('[data-testid="target-measurement"]').setValue('0.216')
+    expect(wrapper.get('[data-testid="target-measurement-mode"]').text()).toBe('Measured')
+
+    await selectThread(wrapper, 'unf', '1/4')
+
+    // 1/4-28 UNF Class 2A maximum.
+    expect(wrapper.get('[data-testid="target-measurement-mode"]').text()).toBe('2A max')
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('0.2258')
+  })
+
+  // Changing class re-aims the target, but a reading already taken is still a reading of
+  // that same thread, so it stays and simply gets judged against the new limits.
+  it('keeps a measurement across a change of class', async () => {
+    const wrapper = mountApp()
+
+    await wrapper.get('[data-testid="target-measurement"]').setValue('0.216')
+    await wrapper.get('[data-testid="thread-class"]').setValue('3A')
+
+    expect(wrapper.get('[data-testid="target-measurement-mode"]').text()).toBe('Measured')
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('0.216')
+  })
+
+  it('keeps a nominal measurement nominal across a mode switch', async () => {
+    const wrapper = mountApp()
+
+    await useBasicClass(wrapper)
+    await wrapper.get('[data-testid="mode-find-e"]').trigger('click')
+
+    // The field now means M, so it holds what a perfect 1/4-20 reads over best-size wires,
+    // and solving it returns the pitch diameter it was built from.
+    expect(wrapper.get('[data-testid="target-measurement-mode"]').text()).toBe('Nominal')
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('0.26083')
+    expect(wrapper.get('[data-testid="result"]').text()).toContain('0.21752')
+  })
+
+  // The 60 deg coefficients 3W and 0.86603P are a coincidence of that angle and do not
+  // carry over to Whitworth's 55 deg form.
+  it('uses the thread angle of a 55 degree BSP thread in the three-wire formula', async () => {
+    const wrapper = mountApp()
+
+    await selectThread(wrapper, 'bsp', 'G1/2')
+    await useMetric(wrapper)
+
+    // ISO 228-1 G1/2: 20.955 mm major, 19.793 mm pitch diameter.
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('19.7934')
+    expect(wrapper.get('[data-testid="best-wire-size"]').text()).toBe('1.0225 mm')
+    // E + 3.16568 W - 0.96049 P. The 60 deg constants would give 21.2700 mm.
+    expect(wrapper.get('[data-testid="result"]').text()).toContain('21.2881')
+  })
+
+  // Each standard offers the classes of its own system, and BSP offers none because the
+  // calculator does not implement one for it.
+  it('offers the class system that belongs to the selected standard', async () => {
+    const wrapper = mountApp()
+
+    expect(classOptions(wrapper)).toEqual(['Basic', 'Class 2A', 'Class 3A'])
+
+    await selectThread(wrapper, 'metric', 'M6')
+    expect(classOptions(wrapper)).toEqual(['Basic', '6g (general purpose)', '4h (close)'])
+
+    await selectThread(wrapper, 'bsp', 'G1/2')
+    expect(wrapper.find('[data-testid="thread-class"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="result-range"]').exists()).toBe(false)
+
+    await selectThread(wrapper, 'unc', '5/8')
+    expect(classOptions(wrapper)).toEqual(['Basic', 'Class 2A', 'Class 3A'])
+  })
+
+  // The two systems have nothing to say to each other, so each remembers its own choice
+  // instead of one resetting the other.
+  it('keeps a class per standard when moving between them', async () => {
+    const wrapper = mountApp()
+
+    await wrapper.get('[data-testid="thread-class"]').setValue('3A')
+
+    await selectThread(wrapper, 'metric', 'M6')
+    expect(wrapper.get('[data-testid="thread-class"]').element.value).toBe('6g')
+    await wrapper.get('[data-testid="thread-class"]').setValue('4h')
+
+    await selectThread(wrapper, 'unc', '1/4')
+    expect(wrapper.get('[data-testid="thread-class"]').element.value).toBe('3A')
+
+    await selectThread(wrapper, 'metric', 'M6')
+    expect(wrapper.get('[data-testid="thread-class"]').element.value).toBe('4h')
+  })
+
+  it('works to the ISO 965 6g limits for M6 x 1', async () => {
+    const wrapper = mountApp()
+
+    await selectThread(wrapper, 'metric', 'M6')
+    await useMetric(wrapper)
+
+    // ISO 965-1: basic 5.350, es(g) -26 um at P = 1, Td2 grade 6 112 um.
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('5.324')
+    expect(wrapper.get('[data-testid="field-range"]').text()).toBe('6g 5.2120 to 5.3240 mm')
+    expect(wrapper.get('[data-testid="class-verdict"]').text()).toBe('Within 6g')
+  })
+
+  it('works to the ISO 965 4h limits for M6 x 1', async () => {
+    const wrapper = mountApp()
+
+    await selectThread(wrapper, 'metric', 'M6')
+    await useMetric(wrapper)
+    await wrapper.get('[data-testid="thread-class"]').setValue('4h')
+
+    // Position h has no allowance, so 4h opens at the basic 5.350; grade 4 is 71 um.
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('5.35')
+    expect(wrapper.get('[data-testid="field-range"]').text()).toBe('4h 5.2790 to 5.3500 mm')
+  })
+
+  // ISO 965-1 starts at 0.99 mm and tabulates set diameter and pitch combinations, so part
+  // of the catalog falls outside it. Those say so rather than quietly showing a basic size
+  // while the class selector claims 6g.
+  it('says so when ISO 965 does not tabulate the selected thread', async () => {
+    const wrapper = mountApp()
+
+    await selectThread(wrapper, 'metric', 'M0.25')
+
+    expect(wrapper.find('[data-testid="result-range"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="target-measurement-mode"]').text()).toBe('Nominal')
+    expect(wrapper.get('[data-testid="class-unavailable"]').text()).toContain('ISO 965')
+
+    await selectThread(wrapper, 'metric', 'M6')
+    expect(wrapper.find('[data-testid="class-unavailable"]').exists()).toBe(false)
+  })
+
+  it('works to the published Class 2A limits for 5/8-11 UNC', async () => {
+    const wrapper = mountApp()
+
+    await selectThread(wrapper, 'unc', '5/8')
+
+    // ASME B1.1: basic 0.5660, Class 2A 0.5589 to 0.5644 after its clearance allowance.
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('0.5644')
+    expect(wrapper.get('[data-testid="field-range"]').text()).toBe('2A 0.55890 to 0.56440 in')
+    // The same limits carried through the wires: M = E + 3W - (P/2) cot 30.
+    expect(wrapper.get('[data-testid="result-range"]').text()).toBe('2A 0.63763 to 0.64313 in')
+    expect(wrapper.get('[data-testid="class-verdict"]').text()).toBe('Within 2A')
+  })
+
+  it('works to the published Class 3A limits for 5/8-11 UNC', async () => {
+    const wrapper = mountApp()
+
+    await selectThread(wrapper, 'unc', '5/8')
+    await wrapper.get('[data-testid="thread-class"]').setValue('3A')
+
+    // Class 3A has no allowance, so it runs from 0.5619 up to the basic 0.5660.
+    expect(wrapper.get('[data-testid="target-measurement"]').element.value).toBe('0.566')
+    expect(wrapper.get('[data-testid="field-range"]').text()).toBe('3A 0.56190 to 0.56600 in')
+    expect(wrapper.get('[data-testid="result-range"]').text()).toBe('3A 0.64063 to 0.64473 in')
+  })
+
+  // The pitch diameter limits are fixed by the class, but what the micrometer should read
+  // depends on the wires actually in use.
+  it('builds the over-wires range from the wire size in use', async () => {
+    const wrapper = mountApp()
+
+    await selectThread(wrapper, 'unc', '5/8')
+    await wrapper.get('[data-testid="wire-size"]').setValue('0.0400')
+
+    expect(wrapper.get('[data-testid="field-range"]').text()).toBe('2A 0.55890 to 0.56440 in')
+    expect(wrapper.get('[data-testid="result-range"]').text()).toBe('2A 0.60017 to 0.60567 in')
+  })
+
+  it('says whether a measurement over wires lands inside the class', async () => {
+    const wrapper = mountApp()
+
+    await selectThread(wrapper, 'unc', '5/8')
+    await wrapper.get('[data-testid="mode-find-e"]').trigger('click')
+
+    await wrapper.get('[data-testid="target-measurement"]').setValue('0.6400')
+    expect(wrapper.get('[data-testid="class-verdict"]').text()).toBe('Within 2A')
+
+    await wrapper.get('[data-testid="target-measurement"]').setValue('0.6300')
+    expect(wrapper.get('[data-testid="class-verdict"]').text()).toBe('Under 2A min')
+
+    await wrapper.get('[data-testid="target-measurement"]').setValue('0.6500')
+    expect(wrapper.get('[data-testid="class-verdict"]').text()).toBe('Over 2A max')
+  })
+
+  // The Appendix B formula does not reproduce every tabulated size, so a computed limit has
+  // to say so rather than pass itself off as the published one.
+  it('flags class limits that came from the formula rather than the table', async () => {
+    const wrapper = mountApp()
+
+    await selectThread(wrapper, 'unc', '5/8')
+    expect(wrapper.find('[data-testid="class-source"]').exists()).toBe(false)
+
+    await selectThread(wrapper, '8-un', '2')
+    expect(wrapper.find('[data-testid="class-source"]').exists()).toBe(true)
+  })
+
+  it('restores the class of fit after a reload', async () => {
+    const first = mountApp()
+
+    await first.get('[data-testid="thread-class"]').setValue('3A')
+    first.unmount()
+
+    const second = mountApp()
+
+    expect(second.get('[data-testid="thread-class"]').element.value).toBe('3A')
+  })
+
   it('restores mode, units, thread selection and wire size after a reload', async () => {
     const first = mountApp()
 
@@ -263,6 +531,7 @@ describe('App', () => {
         standardId: 'no-such-standard',
         threadId: 'no-such-thread',
         wireSizeMm: -3,
+        classId: '9Z',
       }),
     )
 
@@ -273,6 +542,7 @@ describe('App', () => {
     expect(wrapper.get('[data-testid="thread-standard"]').element.value).toBe('unc')
     expect(wrapper.get('[data-testid="fastener-size"]').element.value).toBe('1/4')
     expect(wrapper.get('[data-testid="wire-size-mode"]').text()).toBe('Auto')
+    expect(wrapper.get('[data-testid="thread-class"]').element.value).toBe('2A')
   })
 
   it('falls back to a valid thread when only the stored fastener is unknown', () => {

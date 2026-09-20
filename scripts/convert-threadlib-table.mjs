@@ -12,22 +12,98 @@ const tableEnd = source.lastIndexOf(']')
 const tableJson = source.slice(tableStart, tableEnd + 1).replace(/,\s*]/g, ']')
 const entries = JSON.parse(tableJson)
 
+// Basic pitch diameter sits a fixed fraction of the sharp-V height H below the nominal
+// diameter, and H is itself a fixed multiple of the pitch, so d2 = d - factor * P.
+// The 60 deg forms (ISO 68-1, ASME B1.1) put the pitch line 3/8 H below the crest:
+// 2 * (3/8) * 0.8660254. Whitworth's 55 deg form is rounded away by H/6 at crest and root,
+// leaving the pitch line at half of the remaining depth: 2 * (1/3) * 0.9604915.
+const UNIFIED_PITCH_DIAMETER_FACTOR = 0.649519
+const WHITWORTH_PITCH_DIAMETER_FACTOR = 0.640327
+
+// Classes of fit are per standard: the inch series follows ASME B1.1, metric ISO follows
+// ISO 965. BSP has its own system again, which the calculator does not implement.
+const unified = (id, label) => ({
+    id,
+    label,
+    system: 'imperial',
+    angle: 60,
+    pitchDiameterFactor: UNIFIED_PITCH_DIAMETER_FACTOR,
+    threadClassSystem: 'asme-b1.1',
+})
+
 const standardDefinitions = {
-    metric: { id: 'metric', label: 'Metric ISO', system: 'metric', angle: 60 },
-    unc: { id: 'unc', label: 'UNC', system: 'imperial', angle: 60 },
-    unf: { id: 'unf', label: 'UNF', system: 'imperial', angle: 60 },
-    unef: { id: 'unef', label: 'UNEF', system: 'imperial', angle: 60 },
-    '4-un': { id: '4-un', label: '4-UN', system: 'imperial', angle: 60 },
-    '6-un': { id: '6-un', label: '6-UN', system: 'imperial', angle: 60 },
-    '8-un': { id: '8-un', label: '8-UN', system: 'imperial', angle: 60 },
-    '12-un': { id: '12-un', label: '12-UN', system: 'imperial', angle: 60 },
-    '16-un': { id: '16-un', label: '16-UN', system: 'imperial', angle: 60 },
-    '20-un': { id: '20-un', label: '20-UN', system: 'imperial', angle: 60 },
-    '28-un': { id: '28-un', label: '28-UN', system: 'imperial', angle: 60 },
-    '32-un': { id: '32-un', label: '32-UN', system: 'imperial', angle: 60 },
-    bsp: { id: 'bsp', label: 'BSP parallel (G)', system: 'imperial', angle: 55 },
-    pco: { id: 'pco', label: 'Packaging thread', system: 'metric', angle: null },
-    rms: { id: 'rms', label: 'RMS', system: 'imperial', angle: null },
+    metric: {
+        id: 'metric',
+        label: 'Metric ISO',
+        system: 'metric',
+        angle: 60,
+        pitchDiameterFactor: UNIFIED_PITCH_DIAMETER_FACTOR,
+        threadClassSystem: 'iso-965',
+    },
+    unc: unified('unc', 'UNC'),
+    unf: unified('unf', 'UNF'),
+    unef: unified('unef', 'UNEF'),
+    '4-un': unified('4-un', '4-UN'),
+    '6-un': unified('6-un', '6-UN'),
+    '8-un': unified('8-un', '8-UN'),
+    '12-un': unified('12-un', '12-UN'),
+    '16-un': unified('16-un', '16-UN'),
+    '20-un': unified('20-un', '20-UN'),
+    '28-un': unified('28-un', '28-UN'),
+    '32-un': unified('32-un', '32-UN'),
+    bsp: {
+        id: 'bsp',
+        label: 'BSP parallel (G)',
+        system: 'imperial',
+        angle: 55,
+        pitchDiameterFactor: WHITWORTH_PITCH_DIAMETER_FACTOR,
+        threadClassSystem: null,
+    },
+    pco: {
+        id: 'pco',
+        label: 'Packaging thread',
+        system: 'metric',
+        angle: null,
+        pitchDiameterFactor: null,
+        threadClassSystem: null,
+    },
+    rms: {
+        id: 'rms',
+        label: 'RMS',
+        system: 'imperial',
+        angle: null,
+        pitchDiameterFactor: null,
+        threadClassSystem: null,
+    },
+}
+
+// ISO 228-1 major diameters. A G designation names a pipe bore rather than a thread size,
+// so unlike the metric and inch series the diameter cannot be read out of the designator.
+const bspMajorDiameterMm = {
+    'G1/16': 7.723,
+    'G1/8': 9.728,
+    'G1/4': 13.157,
+    'G3/8': 16.662,
+    'G1/2': 20.955,
+    'G5/8': 22.911,
+    'G3/4': 26.441,
+    'G7/8': 30.201,
+    G1: 33.249,
+    'G1 1/8': 37.897,
+    'G1 1/4': 41.91,
+    'G1 1/2': 47.803,
+    'G1 3/4': 53.746,
+    G2: 59.614,
+    'G2 1/4': 65.71,
+    'G2 1/2': 75.184,
+    'G2 3/4': 81.534,
+    G3: 87.884,
+    'G3 1/2': 100.33,
+    G4: 113.03,
+    'G4 1/2': 125.73,
+    G5: 138.43,
+    'G5 1/2': 151.13,
+    G6: 163.83,
 }
 
 function getStandard(designator) {
@@ -47,12 +123,18 @@ function parseNominalDiameterMm(designator, standard) {
     }
 
     if (standard.id === 'bsp') {
-        return null
+        return bspMajorDiameterMm[designator.replace(/-(?:ext|int)$/, '')] ?? null
     }
 
-    const size = designator.match(/(?:-|^)(#?\d+(?:[ /]\d+)?(?:\/\d+)?)/)?.[1]
+    // Drop the series prefix before looking for the size, or '8-UN-1' reads as an 8 inch
+    // thread instead of a 1 inch one in the 8 threads-per-inch series.
+    const size = designator
+        .replace(/^(?:UNC|UNF|UNEF|\d+-UN)-/, '')
+        .match(/(?:-|^)(#?\d+(?:[ /]\d+)?(?:\/\d+)?)/)?.[1]
     if (!size) return null
-    if (size.startsWith('#')) return Number(size.slice(1))
+    // A number size counts screw sizes rather than measuring one: #N is 0.060 in across,
+    // plus 0.013 in per number.
+    if (size.startsWith('#')) return (0.06 + 0.013 * Number(size.slice(1))) * 25.4
 
     if (size.includes('/')) {
         const mixedNumber = size.match(/^(\d+)\s+(\d+)\/(\d+)$/)

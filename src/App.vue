@@ -1,6 +1,13 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { threadDatabase, threadStandards } from './data/threadDatabase'
+import {
+  defaultClassId,
+  isThreadClassId,
+  pitchDiameterLimitsMm,
+  threadClassShort,
+  threadClassesFor,
+} from './lib/threadLimits'
 
 const STORAGE_KEY = 'twowire:settings:v1'
 
@@ -11,6 +18,19 @@ const DEFAULT_MODE = 'findM'
 const DEFAULT_UNIT_SYSTEM = 'imperial'
 const DEFAULT_STANDARD_ID = 'unc'
 const DEFAULT_THREAD_ID = 'unc-unc-1-4-external'
+// Each standard's class system remembers its own choice, so moving between an inch thread
+// and a metric one does not silently drop a class or carry a meaningless one across.
+function readStoredClassIds(value) {
+  if (!value || typeof value !== 'object') return {}
+
+  return Object.fromEntries(
+    Object.entries(value).filter(([systemId, classId]) => isThreadClassId(systemId, classId)),
+  )
+}
+
+// Every supported standard has a nominal diameter to work from, so this only keeps the
+// field numeric if a future catalog entry ever arrives without one.
+const FALLBACK_TARGET_MEASUREMENT_MM = 12.7
 
 function readStoredSettings() {
   try {
@@ -51,6 +71,7 @@ const storedThread =
   threadDatabase.find((thread) => thread.standardId === storedStandardId && thread.angle !== null)
 
 const currentMode = ref(MODES.includes(stored.mode) ? stored.mode : DEFAULT_MODE)
+const selectedClassIds = ref(readStoredClassIds(stored.classIds))
 const unitSystem = ref(
   UNIT_SYSTEMS.includes(stored.unitSystem) ? stored.unitSystem : DEFAULT_UNIT_SYSTEM,
 )
@@ -125,12 +146,11 @@ const selectedThread = computed(
 
 const pitchMm = computed(() => selectedThread.value.pitch)
 const threadAngle = computed(() => selectedThread.value.angle)
-const targetMeasurementMm = ref(12.7)
+const halfAngleRad = computed(() => (threadAngle.value / 2) * (Math.PI / 180))
 
-const bestWireSize = computed(() => {
-  const halfAngle = (threadAngle.value / 2) * (Math.PI / 180)
-  return pitchMm.value / (2 * Math.cos(halfAngle))
-})
+// The best-size wire is the one that touches each flank exactly at the pitch line, where
+// flank contact is insensitive to how far the wire sinks into the groove.
+const bestWireSize = computed(() => pitchMm.value / (2 * Math.cos(halfAngleRad.value)))
 
 // null override means the wire size follows bestWireSize; typing a value pins it.
 const wireSizeOverrideMm = ref(
@@ -139,19 +159,132 @@ const wireSizeOverrideMm = ref(
 const isWireSizeCustom = computed(() => wireSizeOverrideMm.value !== null)
 const effectiveWireSize = computed(() => wireSizeOverrideMm.value ?? bestWireSize.value)
 
-const result = computed(() => {
-  const wireContribution = 3 * effectiveWireSize.value
-  const pitchContribution = pitchMm.value * Math.cos((threadAngle.value / 2) * (Math.PI / 180))
+// Three-wire geometry: a wire of diameter W in the groove stands W * (1 + 1/sin(half angle))
+// proud of the flank contact, and the sharp-V apex of the groove sits (P/2) * cot(half angle)
+// below the pitch line. Both coefficients follow the thread angle. At 60 deg they collapse to
+// the familiar 3W - 0.86603P, but a 55 deg Whitworth form needs 3.16568W - 0.96049P, so
+// neither can be hardcoded while the catalog carries BSP.
+const wireContribution = computed(
+  () => effectiveWireSize.value * (1 + 1 / Math.sin(halfAngleRad.value)),
+)
+const pitchContribution = computed(() => pitchMm.value / (2 * Math.tan(halfAngleRad.value)))
 
-  if (currentMode.value === 'findE') {
-    return targetMeasurementMm.value - wireContribution + pitchContribution
-  }
+function measurementOverWires(pitchDiameter) {
+  return pitchDiameter + wireContribution.value - pitchContribution.value
+}
 
-  return targetMeasurementMm.value + wireContribution - pitchContribution
+function pitchDiameterOverWires(measurement) {
+  return measurement - wireContribution.value + pitchContribution.value
+}
+
+// The basic pitch diameter: the theoretical size, before any class of fit narrows it. The
+// thread catalog carries no tolerance data, so this is all geometry, and it is what a
+// thread without an applicable class has to be measured against.
+const nominalPitchDiameterMm = computed(() => {
+  const nominalDiameter = selectedThread.value.nominalDiameterMm
+  const factor = selectedStandard.value?.pitchDiameterFactor
+  if (!nominalDiameter || !factor) return null
+
+  return nominalDiameter - factor * pitchMm.value
 })
+
+// Which classes exist is a property of the standard: ASME B1.1 for the inch series, ISO 965
+// for metric, and nothing for BSP, whose system the calculator does not implement.
+const threadClassSystem = computed(() => selectedStandard.value?.threadClassSystem ?? null)
+const threadClasses = computed(() => threadClassesFor(selectedStandard.value))
+const supportsThreadClasses = computed(() => threadClasses.value.length > 0)
+
+const activeClassId = computed(() => {
+  const system = threadClassSystem.value
+  if (!system) return 'basic'
+
+  return selectedClassIds.value[system] ?? defaultClassId(system)
+})
+
+const selectedClassId = computed({
+  get: () => activeClassId.value,
+  set: (value) => {
+    const system = threadClassSystem.value
+    if (!system) return
+
+    selectedClassIds.value = { ...selectedClassIds.value, [system]: value }
+  },
+})
+
+const classLimitsMm = computed(() =>
+  pitchDiameterLimitsMm(selectedThread.value, selectedStandard.value, activeClassId.value),
+)
+
+// What the thread is actually cut to. Class 2A carries a clearance allowance that puts its
+// maximum below the basic size; Class 3A has none, so its maximum is the basic size itself.
+// Without a class there is only the basic pitch diameter to aim at.
+const targetPitchDiameterMm = computed(
+  () => classLimitsMm.value?.maxMm ?? nominalPitchDiameterMm.value,
+)
+
+// Each limit of the class, expressed as the two numbers on the bench: the pitch diameter
+// itself, and what a micrometer should read over the wires currently in use.
+const pitchDiameterRangeMm = computed(() => classLimitsMm.value)
+const measurementRangeMm = computed(() => {
+  const limits = classLimitsMm.value
+  if (!limits) return null
+
+  return {
+    minMm: measurementOverWires(limits.minMm),
+    maxMm: measurementOverWires(limits.maxMm),
+  }
+})
+
+// The field holds M in findE mode and E in findM mode, so the value it starts from has to
+// follow the mode. Both describe the same thread, so toggling round-trips.
+const catalogTargetMm = computed(() => {
+  const pitchDiameter = targetPitchDiameterMm.value
+  if (pitchDiameter === null || pitchDiameter === undefined) return null
+
+  return currentMode.value === 'findE' ? measurementOverWires(pitchDiameter) : pitchDiameter
+})
+
+// null override means the measurement follows the selected thread, as the wire size follows
+// the best size; typing a value pins it.
+const targetMeasurementOverrideMm = ref(null)
+const isTargetMeasurementCustom = computed(() => targetMeasurementOverrideMm.value !== null)
+const targetMeasurementMm = computed(
+  () => targetMeasurementOverrideMm.value ?? catalogTargetMm.value ?? FALLBACK_TARGET_MEASUREMENT_MM,
+)
+
+const result = computed(() =>
+  currentMode.value === 'findE'
+    ? pitchDiameterOverWires(targetMeasurementMm.value)
+    : measurementOverWires(targetMeasurementMm.value),
+)
 
 const resultLabel = computed(() =>
   currentMode.value === 'findE' ? 'Pitch diameter' : 'Measure over wires',
+)
+
+// The class applies to the pitch diameter, which is the result in findE mode and the input
+// in findM mode.
+const pitchDiameterValueMm = computed(() =>
+  currentMode.value === 'findE' ? result.value : targetMeasurementMm.value,
+)
+
+const classVerdict = computed(() => {
+  const limits = classLimitsMm.value
+  const pitchDiameter = pitchDiameterValueMm.value
+  if (!limits || !Number.isFinite(pitchDiameter)) return null
+
+  if (pitchDiameter < limits.minMm - 1e-9) return 'under'
+  if (pitchDiameter > limits.maxMm + 1e-9) return 'over'
+  return 'within'
+})
+
+// Under the input goes the range for what the input means; beside the result, the range for
+// what the result means.
+const fieldRangeMm = computed(() =>
+  currentMode.value === 'findE' ? measurementRangeMm.value : pitchDiameterRangeMm.value,
+)
+const resultRangeMm = computed(() =>
+  currentMode.value === 'findE' ? pitchDiameterRangeMm.value : measurementRangeMm.value,
 )
 
 const typedWireSize = ref(null)
@@ -187,11 +320,44 @@ const targetMeasurementDisplay = computed({
     if (!Number.isFinite(next)) return
 
     typedTargetMeasurement.value = next
-    targetMeasurementMm.value = toMillimeters(next)
+    targetMeasurementOverrideMm.value = toMillimeters(next)
   },
 })
 
 const pitchLengthDisplay = computed(() => toDisplay(pitchMm.value))
+const catalogTargetDisplay = computed(() =>
+  catalogTargetMm.value === null ? null : toDisplay(catalogTargetMm.value),
+)
+
+const classShortLabel = computed(() =>
+  threadClassShort(threadClassSystem.value, activeClassId.value),
+)
+
+const classSystemLabel = computed(() =>
+  threadClassSystem.value === 'iso-965' ? 'ISO 965' : 'ASME B1.1',
+)
+
+function formatRange(range) {
+  if (!range) return null
+
+  const low = toDisplay(range.minMm).toFixed(displayDecimals.value)
+  const high = toDisplay(range.maxMm).toFixed(displayDecimals.value)
+  return `${low} to ${high}`
+}
+
+const fieldRangeDisplay = computed(() => formatRange(fieldRangeMm.value))
+const resultRangeDisplay = computed(() => formatRange(resultRangeMm.value))
+
+const targetSourceLabel = computed(() =>
+  classLimitsMm.value ? `${classShortLabel.value} max` : 'Nominal',
+)
+
+const verdictLabel = computed(() => {
+  if (classVerdict.value === 'within') return `Within ${classShortLabel.value}`
+  if (classVerdict.value === 'under') return `Under ${classShortLabel.value} min`
+  if (classVerdict.value === 'over') return `Over ${classShortLabel.value} max`
+  return null
+})
 const resultDisplay = computed(() => toDisplay(result.value))
 const bestWireSizeDisplay = computed(() => toDisplay(bestWireSize.value))
 
@@ -217,17 +383,24 @@ function useBestWireSize() {
   typedWireSize.value = null
 }
 
+function useTargetMeasurement() {
+  targetMeasurementOverrideMm.value = null
+  typedTargetMeasurement.value = null
+}
+
 // The input means M in findE mode and E in findM mode, so carry the value just calculated
 // into it: the toggle then round-trips instead of silently reinterpreting the old number.
+// A measurement still following the catalog needs no carry, since catalogTargetMm switches
+// sides on its own.
 function setMode(mode) {
   if (mode === currentMode.value) return
 
   const carried = result.value
   currentMode.value = mode
+  typedTargetMeasurement.value = null
 
-  if (Number.isFinite(carried) && carried > 0) {
-    targetMeasurementMm.value = carried
-    typedTargetMeasurement.value = null
+  if (isTargetMeasurementCustom.value && Number.isFinite(carried) && carried > 0) {
+    targetMeasurementOverrideMm.value = carried
   }
 }
 
@@ -239,14 +412,20 @@ function setUnitSystem(system) {
   typedTargetMeasurement.value = null
 }
 
+// A reading belongs to the thread it was taken on, so picking another thread drops it and
+// shows what the new one should measure. Changing class is not a new thread, so a reading
+// survives it and simply gets judged against the new limits. Wires are not per-thread
+// either: a custom wire size is the set on the bench, so that one survives too.
+watch(selectedThreadId, useTargetMeasurement)
+
 // Measurements are per-job and start fresh; the setup around them is remembered.
 watch(
-  [currentMode, unitSystem, selectedStandardId, selectedThreadId, wireSizeOverrideMm],
-  ([mode, units, standardId, threadId, wireSizeMm]) => {
+  [currentMode, unitSystem, selectedStandardId, selectedThreadId, wireSizeOverrideMm, selectedClassIds],
+  ([mode, units, standardId, threadId, wireSizeMm, classIds]) => {
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ mode, unitSystem: units, standardId, threadId, wireSizeMm }),
+        JSON.stringify({ mode, unitSystem: units, standardId, threadId, wireSizeMm, classIds }),
       )
     } catch {
       // Storage unavailable or full: the session still works, it just will not be restored.
@@ -384,6 +563,23 @@ watch(
             </div>
           </div>
 
+          <div
+            v-if="supportsThreadClasses"
+            class="grid gap-2 sm:grid-cols-[1fr_17rem] sm:items-center sm:gap-6"
+          >
+            <label class="text-sm font-bold text-slate-800" for="thread-class">Class of fit</label>
+            <select
+              id="thread-class"
+              v-model="selectedClassId"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-right text-sm font-semibold shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              data-testid="thread-class"
+            >
+              <option v-for="threadClass in threadClasses" :key="threadClass.id" :value="threadClass.id">
+                {{ threadClass.label }}
+              </option>
+            </select>
+          </div>
+
           <div class="grid gap-2 sm:grid-cols-[1fr_17rem] sm:items-start sm:gap-6">
             <div class="flex flex-wrap items-center gap-2 sm:pt-3">
               <label class="text-sm font-bold text-slate-800" for="wire-size">
@@ -422,21 +618,48 @@ watch(
             </div>
           </div>
 
-          <div class="grid gap-2 sm:grid-cols-[1fr_17rem] sm:items-center sm:gap-6">
-            <label class="text-sm font-bold text-slate-800" for="target-measurement">
-              {{ currentMode === 'findE' ? 'Measure over wires' : 'Pitch diameter' }}
-              <span class="font-normal text-slate-500">({{ unitLabel }})</span>
-            </label>
-            <input
-              id="target-measurement"
-              v-model.number="targetMeasurementDisplay"
-              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-right text-sm font-semibold tabular-nums shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              type="number"
-              min="0"
-              step="any"
-              inputmode="decimal"
-              data-testid="target-measurement"
-            />
+          <div class="grid gap-2 sm:grid-cols-[1fr_17rem] sm:items-start sm:gap-6">
+            <div class="flex flex-wrap items-center gap-2 sm:pt-3">
+              <label class="text-sm font-bold text-slate-800" for="target-measurement">
+                {{ currentMode === 'findE' ? 'Measure over wires' : 'Pitch diameter' }}
+                <span class="font-normal text-slate-500">({{ unitLabel }})</span>
+              </label>
+              <span
+                class="rounded-full px-2 py-0.5 text-[0.7rem] font-bold uppercase tracking-wide"
+                :class="isTargetMeasurementCustom ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'"
+                data-testid="target-measurement-mode"
+              >
+                {{ isTargetMeasurementCustom ? 'Measured' : targetSourceLabel }}
+              </span>
+            </div>
+            <div>
+              <input
+                id="target-measurement"
+                v-model.number="targetMeasurementDisplay"
+                class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-right text-sm font-semibold tabular-nums shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                type="number"
+                min="0"
+                step="any"
+                inputmode="decimal"
+                data-testid="target-measurement"
+              />
+              <div
+                v-if="fieldRangeDisplay || (isTargetMeasurementCustom && catalogTargetDisplay !== null)"
+                class="mt-1.5 flex items-center justify-between gap-3 text-xs text-slate-500"
+              >
+                <span v-if="fieldRangeDisplay" class="tabular-nums" data-testid="field-range">{{ classShortLabel }} {{ fieldRangeDisplay }} {{ unitLabel }}</span>
+                <span v-else class="tabular-nums" data-testid="nominal-target">Nominal {{ catalogTargetDisplay.toFixed(displayDecimals) }} {{ unitLabel }}</span>
+                <button
+                  v-if="isTargetMeasurementCustom"
+                  class="rounded font-bold text-blue-700 transition hover:text-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  type="button"
+                  data-testid="use-target-measurement"
+                  @click="useTargetMeasurement"
+                >
+                  Use {{ classLimitsMm ? 'limit' : 'nominal' }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -449,6 +672,17 @@ watch(
               {{ Number.isFinite(resultDisplay) ? resultDisplay.toFixed(displayDecimals) : '—' }}
               <span class="text-lg font-semibold text-slate-400">{{ unitLabel }}</span>
             </p>
+            <div v-if="resultRangeDisplay" class="mt-3 flex flex-wrap items-center gap-2">
+              <span class="text-sm tabular-nums text-slate-400" data-testid="result-range">{{ classShortLabel }} {{ resultRangeDisplay }} {{ unitLabel }}</span>
+              <span
+                v-if="verdictLabel"
+                class="rounded-full px-2 py-0.5 text-[0.7rem] font-bold uppercase tracking-wide"
+                :class="classVerdict === 'within' ? 'bg-emerald-400/15 text-emerald-300' : 'bg-amber-400/15 text-amber-300'"
+                data-testid="class-verdict"
+              >
+                {{ verdictLabel }}
+              </span>
+            </div>
           </div>
           <div class="rounded-2xl bg-white/10 px-4 py-3 text-left sm:text-right">
             <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Best wire size</p>
@@ -457,6 +691,14 @@ watch(
         </div>
         <p class="mt-6 border-t border-white/10 pt-4 text-xs leading-5 text-slate-400">
           Best wire size uses W = P / (2 × cos(half thread angle)).
+          <span v-if="classLimitsMm?.source === 'formula'" data-testid="class-source">
+            ASME B1.1 does not table this size here, so its class limits come from the tolerance
+            formula instead. Check them against the printed table before cutting to them.
+          </span>
+          <span v-else-if="activeClassId !== 'basic' && !classLimitsMm" data-testid="class-unavailable">
+            This diameter and pitch is not a combination {{ classSystemLabel }} tabulates, so there
+            are no {{ classShortLabel }} limits to show and the basic pitch diameter stands in.
+          </span>
         </p>
       </section>
     </div>
