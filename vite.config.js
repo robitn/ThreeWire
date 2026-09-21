@@ -10,7 +10,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // GitHub Pages serves a project site from a subpath, so every built asset URL has to carry
 // the repository name. The dev server stays at the root.
-const base = process.env.NODE_ENV === 'production' ? '/TwoWire/' : '/'
+const base = process.env.NODE_ENV === 'production' ? '/ThreeWire/' : '/'
 
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
 
@@ -51,8 +51,8 @@ export default defineConfig({
       // webmanifest and every icon listed below.
       includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'TwoWire — Thread Wire Calculator',
-        short_name: 'TwoWire',
+        name: 'ThreeWire — Thread Wire Calculator',
+        short_name: 'ThreeWire',
         description:
           'Three-wire thread calculator: pitch diameter, measurement over wires, and ASME B1.1 or ISO 965 class limits.',
         // Matches the app shell (bg-slate-100) rather than the icon, so the splash screen

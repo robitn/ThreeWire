@@ -239,12 +239,14 @@ report.
 
 Pushing to `main` runs `.github/workflows/deploy.yml`, which tests, builds, and publishes
 `dist` to GitHub Pages. The site is served from a project subpath, so `vite.config.js` sets
-`base` to `/TwoWire/` for production builds; renaming the repository means changing that
+`base` to `/ThreeWire/` for production builds; renaming the repository means changing that
 value.
 
 The app icons are drawn from geometry rather than checked in as binaries from a design
-tool. To change the icon, edit the shapes in `scripts/generate-icons.mjs` (and mirror them
-in `public/favicon.svg`), then regenerate:
+tool. To change the icon, edit the constants at the top of `scripts/generate-icons.mjs` --
+pitch, flank run, depth, wire radius and the two crest lines -- and every point of the
+drawing follows from them. The script writes the PNGs and `public/favicon.svg` from the same
+numbers, so the vector copy cannot drift from the raster ones:
 
 ```bash
 npm run generate:icons
@@ -302,7 +304,7 @@ Run the unit tests:
 npm run test:unit -- --run
 ```
 
-Preview the production build. Note that it is served from the `/TwoWire/` subpath, matching
+Preview the production build. Note that it is served from the `/ThreeWire/` subpath, matching
 GitHub Pages:
 
 ```bash

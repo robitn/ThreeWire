@@ -3,8 +3,8 @@ import { beforeEach, describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import App from '../App.vue'
 
-const STORAGE_KEY = 'twowire:settings:v1'
-const GUIDE_KEY = 'twowire:guide-seen:v1'
+const STORAGE_KEY = 'threewire:settings:v1'
+const GUIDE_KEY = 'threewire:guide-seen:v1'
 
 // First-run state: Find measure over wires, imperial units, 1/4-20 UNC (1.27 mm pitch, 60 deg).
 function mountApp() {
@@ -627,5 +627,42 @@ describe('App guide', () => {
     setStorage(undefined)
 
     expect(guideIsOpen(mountApp())).toBe(false)
+  })
+})
+
+// The app was called TwoWire until it was renamed. localStorage is scoped to the origin
+// rather than to the path, so those entries survive the rename and have to be honoured:
+// dropping them would reset a returning user's setup and re-open the guide at them.
+describe('App storage from before the rename', () => {
+  const LEGACY_STORAGE_KEY = 'twowire:settings:v1'
+  const LEGACY_GUIDE_KEY = 'twowire:guide-seen:v1'
+
+  it('restores a setup saved under the old key', () => {
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({ mode: 'findE', unitSystem: 'metric', classIds: {} }),
+    )
+
+    const wrapper = mountApp()
+
+    expect(wrapper.get('[data-testid="mode-find-e"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('[data-testid="units-metric"]').attributes('aria-pressed')).toBe('true')
+  })
+
+  it('carries the old entry forward, so it is only needed once', () => {
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({ mode: 'findE', unitSystem: 'metric', classIds: {} }),
+    )
+
+    mountApp()
+
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)).unitSystem).toBe('metric')
+  })
+
+  it('does not re-open the guide for someone who read it before the rename', () => {
+    window.localStorage.setItem(LEGACY_GUIDE_KEY, new Date().toISOString())
+
+    expect(mountApp().find('[data-testid="guide-sheet"]').exists()).toBe(false)
   })
 })

@@ -423,8 +423,13 @@ watch(
           data-testid="open-guide"
           @click="openGuide"
         >
-          <span class="flex flex-col gap-1" aria-hidden="true">
-            <span class="block h-3 w-3 rounded-full bg-current"></span>
+          <!-- The three wires as they actually sit: a pair in adjacent grooves on one side,
+               the third in the groove between them on the other. -->
+          <span class="flex flex-col items-center gap-1" aria-hidden="true">
+            <span class="flex gap-1">
+              <span class="block h-3 w-3 rounded-full bg-current"></span>
+              <span class="block h-3 w-3 rounded-full bg-current"></span>
+            </span>
             <span class="block h-3 w-3 rounded-full border-2 border-current"></span>
           </span>
           <span class="text-sm font-bold">Guide</span>

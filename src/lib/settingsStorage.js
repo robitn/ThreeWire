@@ -1,16 +1,37 @@
 import { isThreadClassId } from './threadLimits'
 import { isUnitSystem } from './units'
 
-export const STORAGE_KEY = 'twowire:settings:v1'
+export const STORAGE_KEY = 'threewire:settings:v1'
 
 export const MODES = ['findE', 'findM']
 
 const DEFAULT_MODE = 'findM'
 const DEFAULT_UNIT_SYSTEM = 'imperial'
 
+// The app was called TwoWire before it was renamed, and localStorage is scoped to the
+// origin rather than to the path, so the rename does not clear anyone's stored setup -- it
+// only changes the key it is filed under. Without this a returning user would silently lose
+// their standard, size and units, and be shown the guide again as though this were a first
+// run. The old entries are left in place rather than deleted: they cost two keys, and
+// removing them would strand anyone who went back to an older build.
+const LEGACY_STORAGE_KEY = 'twowire:settings:v1'
+const LEGACY_GUIDE_KEY = 'twowire:guide-seen:v1'
+
+// Carries the old entry forward on first read, so the fallback is only ever needed once.
+// Everything read this way still goes through the same validation as before.
+function readRenamed(key, legacyKey) {
+  const current = window.localStorage.getItem(key)
+  if (current !== null) return current
+
+  const legacy = window.localStorage.getItem(legacyKey)
+  if (legacy !== null) window.localStorage.setItem(key, legacy)
+
+  return legacy
+}
+
 function readRaw() {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = readRenamed(STORAGE_KEY, LEGACY_STORAGE_KEY)
     const parsed = raw ? JSON.parse(raw) : null
     return parsed && typeof parsed === 'object' ? parsed : {}
   } catch {
@@ -57,7 +78,7 @@ export function writeSettings(settings) {
 
 // The guide flag lives under its own key rather than inside the settings entry, so bumping
 // the settings schema never re-opens the guide at someone who has already read it.
-export const GUIDE_KEY = 'twowire:guide-seen:v1'
+export const GUIDE_KEY = 'threewire:guide-seen:v1'
 
 /**
  * Whether the guide has been shown before. Storage being unavailable counts as seen: the
@@ -65,7 +86,7 @@ export const GUIDE_KEY = 'twowire:guide-seen:v1'
  */
 export function readGuideSeen() {
   try {
-    return window.localStorage.getItem(GUIDE_KEY) !== null
+    return readRenamed(GUIDE_KEY, LEGACY_GUIDE_KEY) !== null
   } catch {
     return true
   }
