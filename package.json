@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run generate:guide && vite build",
     "preview": "vite preview",
     "test:unit": "vitest",
     "generate:icons": "node scripts/generate-icons.mjs",
+    "generate:guide": "node scripts/generate-guide.mjs",
     "update:threadlib": "node scripts/update-threadlib-table.mjs"
   },
   "dependencies": {

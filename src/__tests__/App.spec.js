@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import App from '../App.vue'
 
 const STORAGE_KEY = 'twowire:settings:v1'
+const GUIDE_KEY = 'twowire:guide-seen:v1'
 
 // First-run state: Find measure over wires, imperial units, 1/4-20 UNC (1.27 mm pitch, 60 deg).
 function mountApp() {
@@ -583,5 +584,48 @@ describe('App', () => {
     await useMetric(wrapper)
 
     expect(wrapper.get('[data-testid="units-metric"]').attributes('aria-pressed')).toBe('true')
+  })
+})
+
+// The guide opens itself once and then gets out of the way. A returning user who is here to
+// measure a thread should never meet it again unless they ask for it.
+describe('App guide', () => {
+  function guideIsOpen(wrapper) {
+    return wrapper.find('[data-testid="guide-sheet"]').exists()
+  }
+
+  it('opens the guide on a first run', () => {
+    expect(guideIsOpen(mountApp())).toBe(true)
+  })
+
+  it('leaves the guide closed for someone who has seen it', () => {
+    window.localStorage.setItem(GUIDE_KEY, new Date().toISOString())
+
+    expect(guideIsOpen(mountApp())).toBe(false)
+  })
+
+  it('remembers the guide was closed, across a relaunch', async () => {
+    const wrapper = mountApp()
+    await wrapper.get('[data-testid="guide-sheet-close"]').trigger('click')
+
+    expect(guideIsOpen(wrapper)).toBe(false)
+    expect(window.localStorage.getItem(GUIDE_KEY)).not.toBeNull()
+    expect(guideIsOpen(mountApp())).toBe(false)
+  })
+
+  it('reopens the guide from the header button', async () => {
+    window.localStorage.setItem(GUIDE_KEY, new Date().toISOString())
+    const wrapper = mountApp()
+
+    await wrapper.get('[data-testid="open-guide"]').trigger('click')
+
+    expect(guideIsOpen(wrapper)).toBe(true)
+  })
+
+  // Storage refusing to hold the flag would otherwise mean the manual on every launch.
+  it('does not open the guide when storage is unavailable', () => {
+    setStorage(undefined)
+
+    expect(guideIsOpen(mountApp())).toBe(false)
   })
 })

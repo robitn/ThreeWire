@@ -54,3 +54,27 @@ export function writeSettings(settings) {
     // Storage unavailable or full: the session still works, it just will not be restored.
   }
 }
+
+// The guide flag lives under its own key rather than inside the settings entry, so bumping
+// the settings schema never re-opens the guide at someone who has already read it.
+export const GUIDE_KEY = 'twowire:guide-seen:v1'
+
+/**
+ * Whether the guide has been shown before. Storage being unavailable counts as seen: the
+ * alternative is a private-browsing session that opens the manual on every single launch.
+ */
+export function readGuideSeen() {
+  try {
+    return window.localStorage.getItem(GUIDE_KEY) !== null
+  } catch {
+    return true
+  }
+}
+
+export function writeGuideSeen() {
+  try {
+    window.localStorage.setItem(GUIDE_KEY, new Date().toISOString())
+  } catch {
+    // Storage unavailable or full: the guide simply offers itself again next launch.
+  }
+}

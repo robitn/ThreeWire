@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import FieldRow from './components/FieldRow.vue'
+import GuideSheet from './components/GuideSheet.vue'
 import ReloadPrompt from './components/ReloadPrompt.vue'
 import SegmentedControl from './components/SegmentedControl.vue'
 import StatusBadge from './components/StatusBadge.vue'
@@ -26,7 +27,12 @@ import {
   threadClassesFor,
   threadClassShort,
 } from './lib/threadLimits'
-import { readSettings, writeSettings } from './lib/settingsStorage'
+import {
+  readGuideSeen,
+  readSettings,
+  writeGuideSeen,
+  writeSettings,
+} from './lib/settingsStorage'
 import * as units from './lib/units'
 
 // Every supported standard has a nominal diameter to work from, so this only keeps the
@@ -59,6 +65,23 @@ const selectedClassIds = ref(stored.classIds)
 const selectedStandardId = ref(restoredStandardId)
 const selectedSize = ref(sizeOf(restoredThread))
 const selectedThreadId = ref(restoredThread.id)
+
+/* The guide ----------------------------------------------------------------------------- */
+
+// Offered once, on the first run, and never again on its own. A tool someone reaches for
+// weekly should not re-offer its manual on a timer: a prompt raised when nothing has
+// changed teaches people to dismiss prompts, including the one about a new version. The
+// header button keeps the guide a tap away for the rest of the time.
+const guideOpen = ref(!readGuideSeen())
+
+function openGuide() {
+  guideOpen.value = true
+}
+
+function closeGuide() {
+  guideOpen.value = false
+  writeGuideSeen()
+}
 
 /* Units ------------------------------------------------------------------------------- */
 
@@ -394,10 +417,18 @@ watch(
             Solve pitch diameter or measure over wires with a three-wire method.
           </p>
         </div>
-        <div class="hidden rounded-2xl bg-white p-3 text-blue-700 shadow-sm ring-1 ring-slate-200 sm:block" aria-hidden="true">
-          <span class="block h-3 w-3 rounded-full bg-current"></span>
-          <span class="mt-1 block h-3 w-3 rounded-full border-2 border-current"></span>
-        </div>
+        <button
+          class="flex flex-none items-center gap-2.5 rounded-2xl bg-white px-3 py-2.5 text-blue-700 shadow-sm ring-1 ring-slate-200 transition hover:ring-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          type="button"
+          data-testid="open-guide"
+          @click="openGuide"
+        >
+          <span class="flex flex-col gap-1" aria-hidden="true">
+            <span class="block h-3 w-3 rounded-full bg-current"></span>
+            <span class="block h-3 w-3 rounded-full border-2 border-current"></span>
+          </span>
+          <span class="text-sm font-bold">Guide</span>
+        </button>
       </header>
 
       <SegmentedControl
@@ -605,6 +636,7 @@ watch(
     </div>
   </main>
 
+  <GuideSheet :open="guideOpen" @close="closeGuide" />
   <ReloadPrompt />
 </template>
 

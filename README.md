@@ -23,6 +23,8 @@ Thread Wire Calculator is a mobile-friendly Vue 3 application for measuring and 
   - 4-UN, 6-UN, and 8-UN
   - BSP parallel (G) threads
 - Provide keyboard-accessible controls with visible focus states and responsive layouts for small screens.
+- Carry the user guide inside the app, offered once on a first run and available from the
+  header button afterwards, precached with everything else so it reads with no signal.
 
 ## Using The Calculator
 
@@ -37,6 +39,9 @@ Thread Wire Calculator is a mobile-friendly Vue 3 application for measuring and 
    below puts the target back. Selecting a different thread also clears the reading, since
    a measurement belongs to the thread it was taken on; changing class does not, because
    the thread has not changed -- only the limits it is judged against.
+
+The **Guide** button in the header opens the user guide in a sheet over the calculator. It
+offers itself once on a first run; after that it waits to be asked.
 
 With a class selected, the calculator shows the permitted range under the input and beside
 the result, so both the pitch diameter limits and the measurement over wires they
@@ -156,6 +161,39 @@ The generated file is `src/data/threadDatabase.js`. Do not edit that generated f
 
 The upstream threadlib data is distributed under the BSD-3-Clause license. See `THIRD_PARTY_LICENSES.md` for attribution and licensing details.
 
+## The User Guide
+
+`user.md` is the guide, written for someone meeting the three-wire method for the first
+time. It is the only copy: `npm run generate:guide` renders it to `src/data/userGuide.js`,
+which `src/components/GuideSheet.vue` displays in a modal sheet over the calculator. Do not
+edit the generated file by hand.
+
+```bash
+npm run generate:guide
+```
+
+`npm run build` runs it first, so a deployed guide cannot lag the markdown beside it. The
+output is deterministic, so a build only rewrites the file when the source really changed.
+`npm run dev` does not regenerate, so editing the guide mid-session means running the script
+by hand. What catches an edit that was never regenerated at all is a test: `userGuide.spec.js`
+re-renders `user.md` and asserts the committed module matches it exactly.
+
+The converter in `scripts/convert-guide.mjs` covers the subset the guide uses -- headings,
+paragraphs, bulleted and numbered lists with one level of nesting, tables, emphasis, code
+spans and links -- and throws on anything else rather than letting it through. The fallback
+for an unrecognised line is to treat it as a paragraph, which would put raw `**markup**` in
+front of a reader, so a fenced code block, a block quote, an image, raw HTML, a heading
+below `###`, two headings that would share an id, or a table row that does not match its
+header all fail the build instead.
+
+The sheet is offered on a first run and never again on its own. It records that under its
+own storage key rather than inside the settings entry, so bumping the settings schema does
+not re-open it at someone who has already read it, and storage that refuses the flag counts
+as seen -- the alternative is the manual on every launch in a private window. There is no
+periodic re-prompt: a tool reached for weekly should not re-offer its manual on a timer, and
+a prompt raised when nothing has changed teaches people to dismiss prompts, including the
+one about a new version.
+
 ## Installing As An App
 
 The hosted build is a Progressive Web App, so it installs to the home screen and runs
@@ -217,7 +255,7 @@ npm run generate:icons
 ```text
 src/
   App.vue              the one screen: state wiring and layout
-  components/          FieldRow, SegmentedControl, StatusBadge, ReloadPrompt
+  components/          FieldRow, SegmentedControl, StatusBadge, GuideSheet, ReloadPrompt
   lib/                 the domain, with no Vue in it
     units.js           millimetre and inch conversion, display rounding
     threadGeometry.js  pitch diameter, best wire size, the three-wire relation
@@ -228,6 +266,7 @@ src/
     threadDatabase.js  generated from threadlib; do not edit by hand
     unifiedClassLimits.js  ASME B1.1 tables, transcribed
     isoClassLimits.js      ISO 965-1 tables, transcribed
+    userGuide.js           generated from user.md; do not edit by hand
   __tests__/           one spec per module, plus App.spec.js end to end
 ```
 
