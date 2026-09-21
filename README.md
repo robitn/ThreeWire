@@ -2,6 +2,8 @@
 
 Thread Wire Calculator is a mobile-friendly Vue 3 application for measuring and calculating thread geometry with the three-wire method. It is intended for machinists, toolmakers, and workshop users checking thread pitch diameter or determining the required measurement over wires.
 
+Live at <https://robitn.github.io/ThreeWire/>.
+
 ## Features
 
 - Find pitch diameter from a known measurement over wires.
@@ -196,8 +198,9 @@ one about a new version.
 
 ## Installing As An App
 
-The hosted build is a Progressive Web App, so it installs to the home screen and runs
-offline once loaded -- useful at a bench with no signal.
+The hosted build at <https://robitn.github.io/ThreeWire/> is a Progressive Web App, so it
+installs to the home screen and runs offline once loaded -- useful at a bench with no
+signal.
 
 - **iOS/iPadOS:** open the site in Safari, then Share -> Add to Home Screen.
 - **Android:** open the site in Chrome, then Menu -> Install and create shortcut. Chrome
