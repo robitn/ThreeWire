@@ -115,5 +115,5 @@ export const guideHtml = [
   "<ul><li><strong>Update</strong> switches to the new version and reloads. Your current measurement is not carried across, so finish what you are reading first.</li><li><strong>Close</strong> leaves you on the version you are running. You will be offered the update again next time you open the app.</li></ul>",
   "<p>Nothing updates itself behind your back. An app that reloaded on its own halfway through a measurement would be worse than one running a week behind.</p>",
   "<h2 id=\"reporting-a-problem\">Reporting a problem</h2>",
-  "<p>The bottom right corner of the result panel shows a version and a short code, like <code>v0.2.0 · 427ebb1</code>. Quote both when reporting a problem. The version alone cannot tell anyone whether your installed copy has picked up a given fix; the code always changes when anything does.</p>",
+  "<p>The bottom right corner of the result panel shows a version number, then a dot, then a short code of letters and digits. Quote the whole line when reporting a problem. The version alone cannot tell anyone whether your installed copy has picked up a given fix; the code after it changes whenever anything does.</p>",
 ].join('\n')

@@ -225,7 +225,7 @@ measurement would be worse than one running a week behind.
 
 ## Reporting a problem
 
-The bottom right corner of the result panel shows a version and a short code, like
-`v0.2.0 · 427ebb1`. Quote both when reporting a problem. The version alone cannot tell
-anyone whether your installed copy has picked up a given fix; the code always changes when
-anything does.
+The bottom right corner of the result panel shows a version number, then a dot, then a
+short code of letters and digits. Quote the whole line when reporting a problem. The version
+alone cannot tell anyone whether your installed copy has picked up a given fix; the code
+after it changes whenever anything does.
